@@ -1,0 +1,102 @@
+// GUI's title
+Dialog.createNonBlocking("GFP fiber length");
+ 
+// Chose directory
+Dialog.addDirectory("Select your directory ", "/");
+
+// Show GUI
+Dialog.show();
+
+// Execute the rest of the code when OK is pressed
+// Set vars for inputs
+masterDir = Dialog.getString();
+
+// Execute macro here
+close("*");
+// Show process if checked
+
+input = masterDir + "/_images/"; 
+list = getFileList(input);
+
+// Create the logs folder
+new_directory_overlay = masterDir+"/_logs";
+File.makeDirectory(new_directory_overlay);
+
+// Create masks folder
+new_directory_overlay = masterDir+"/_masks";
+File.makeDirectory(new_directory_overlay);
+
+// Create roi folder
+new_directory_overlay = masterDir+"/ROI";
+File.makeDirectory(new_directory_overlay);
+
+input = masterDir + "/_images/"; 
+list = getFileList(input);
+
+// Create the overlay folder
+//new_directory_overlay = masterDir+"/overlay";
+//File.makeDirectory(new_directory_overlay);
+
+for (i = 0; i < list.length; i++){  
+	path = list[i];
+	file = input + path;
+
+	//open(file);
+	run("Bio-Formats", "open=["+file+"] color_mode=Grayscale rois_import=[ROI manager] view=Hyperstack stack_order=XYCZT");
+	
+	run("Stack to Images");
+	images = getList("image.titles");
+	
+	TH = images[0];
+	GFP = images[1];
+
+	selectWindow(TH);
+	run("Set Scale...", "distance=0 known=0 pixel=1 unit=pixel"); 
+	run("Enhance Contrast", "saturated=0.35");
+	
+	selectWindow(GFP);
+	run("Set Scale...", "distance=0 known=0 pixel=1 unit=pixel"); 
+	//CHANGE THRESHOLD
+	setAutoThreshold("Otsu dark");
+	setOption("BlackBackground", false);
+	run("Convert to Mask");
+	skeleton = getTitle();
+	run("Duplicate...", " ");
+	skeleton_dupl = getTitle();
+	
+	//Select TH window to make outline of SN first
+	selectWindow(TH);
+	setTool("freehand");
+	waitForUser("Draw ROI of SN, then hit OK"); // if none, do small outline of random region - any 0 value will be ignored
+	run("ROI Manager...");
+	roiManager("Add");
+	
+	//Make outline of VTA
+	waitForUser("Draw ROI of VTA, then hit OK"); // if none, do small outline of random region - any 0 value will be ignored
+	roiManager("Add");
+
+	run("Set Measurements...", "area area_fraction display redirect=None decimal=9");
+	selectWindow(skeleton);
+	roiManager("Select", newArray(0,1));
+	roiManager("multi-measure measure_all");
+
+	selectWindow("Results");
+	saveAs("Results", masterDir+ "/_logs/" + path + ".csv");
+
+	roiManager("Save", masterDir + "/ROI/" + path  + ".zip");
+	roiManager("Deselect");
+	roiManager("Delete");
+		
+	//run("Set Measurements...", "area redirect=None decimal=1");
+	//run("Analyze Particles...", "size=1-Infinity summarize");
+
+	// Save count
+	selectWindow(skeleton_dupl);
+	saveAs("jpeg",  masterDir + "/_masks/" + path + ".jpeg");
+	close(skeleton);
+
+	close("Results");
+	close("*");
+	
+}
+
