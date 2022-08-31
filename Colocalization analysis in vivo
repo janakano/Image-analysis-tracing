@@ -1,0 +1,160 @@
+// GUI's title
+Dialog.createNonBlocking("Coloc macro for eYFP injections");
+ 
+// Chose directory
+Dialog.addDirectory("Select your directory ", "/");
+
+// Show GUI
+Dialog.show();
+
+// Execute the rest of the code when OK is pressed
+// Set vars for inputs
+masterDir = Dialog.getString();
+
+// Execute macro here
+close("*");
+// Show process if checked
+
+input = masterDir + "/_images/"; 
+list = getFileList(input);
+
+// Create the logs folder
+new_directory_overlay = masterDir+"/_logs";
+File.makeDirectory(new_directory_overlay);
+
+// Create masks folder
+new_directory_overlay = masterDir+"/_masks";
+File.makeDirectory(new_directory_overlay);
+
+setBatchMode("hide");
+
+for (i = 0; i < list.length; i++){  
+    path = list[i];
+    file = input + path;
+
+	if (endsWith(path, ".oif")) {
+		run("Bio-Formats", "open=["+file+"] color_mode=Grayscale rois_import=[ROI manager] split_channels view=Hyperstack stack_order=XYCZT");
+		images = getList("image.titles");
+	
+		GFP = images[0];
+		Syt1 = images[1];
+		Map2 = images[2]; 
+	
+		selectWindow(GFP);
+		raw_stack_GFP = getTitle();
+		run("Set Scale...", "distance=0 known=0 unit=pixel");
+		run("Grays");
+		rename("GFP_stack");
+		
+		selectWindow(Syt1);
+		raw_stack_Syt1 = getTitle();
+		run("Set Scale...", "distance=0 known=0 unit=pixel");
+		run("Grays");
+		rename("Syt1_stack");
+		
+		selectWindow("GFP_stack");
+		run("Duplicate...", "duplicate");
+		GFP_dupl = getTitle();
+		run("Z Project...", "projection=[Average Intensity]");
+		GFP_dupl_2 = getTitle();
+		selectWindow(GFP_dupl_2);
+		setMinAndMax(230, 230);
+		run("Apply LUT");
+		
+		setAutoThreshold("Default dark");
+		setOption("BlackBackground", false);
+		run("Convert to Mask");
+		
+		// to remove cell bodies
+		run("Analyze Particles...", "size=1000-infinity circularity=0.00-1.00 show=Overlay add");
+		roiManager("Combine");
+	
+		type=selectionType();
+	
+	    if (type==10) {
+
+	    	selectWindow(GFP_dupl); close();
+	    	selectWindow(GFP_dupl_2); close();
+	    	
+	    	selectWindow(Map2);
+			raw_stack_Map2 = getTitle();
+			run("Set Scale...", "distance=0 known=0 unit=pixel");
+			run("Grays");
+			setMinAndMax(450, 450);
+			run("Apply LUT");
+			rename("Map2_stack");
+	
+			imageCalculator("Subtract create stack", "GFP_stack","Map2_stack");
+			rename("final_picture_GFP");
+			
+			selectWindow("Map2_stack"); close();
+			selectWindow("GFP_stack"); close();
+
+			run("JACoP ");
+			selectWindow("final_picture_GFP");
+			selectWindow("Syt1_stack");
+		
+			run("JACoP ", "imga=[final_picture_GFP] imgb=[Syt1_stack] thra=350 thrb=300 mm");
+	
+			//Saves log into _log folder with name of image file
+			selectWindow("Log");
+			saveAs("Text", masterDir + "/_logs/" + path);
+			
+			close("*");
+			close("Log");
+			close("Exception");
+		} 
+		else {
+			run("Make Inverse");
+			roiManager("Add");
+			run("Create Mask");
+			
+			//save mask to check what was selected at the end of analysis
+			//saveAs("Tiff", masterDir + "/_masks/" + path);
+		
+			roiManager("Deselect");
+			roiManager("Delete");
+			
+			run("Divide...", "value=255");
+		
+			segmented_image = getTitle();
+			
+			// remove cell bodies from GFP
+			imageCalculator("Multiply create stack", "GFP_stack",segmented_image);
+			masked_image_GFP = getTitle();
+			
+			selectWindow(Map2);
+			raw_stack_Map2 = getTitle();
+			run("Set Scale...", "distance=0 known=0 unit=pixel");
+			run("Grays");
+			setMinAndMax(450, 450);
+			run("Apply LUT");
+			rename("Map2_stack");
+			
+			//remove Map2 signal from GFP
+			imageCalculator("Subtract create stack", masked_image_GFP,"Map2_stack");
+			rename("final_picture_GFP");
+			
+			selectWindow("Map2_stack"); close();
+			selectWindow("GFP_stack"); close();
+			selectWindow(segmented_image); close();
+			selectWindow(GFP_dupl); close();
+			selectWindow(GFP_dupl_2); close();
+
+			run("JACoP ");
+			selectWindow("final_picture_GFP");
+			selectWindow("Syt1_stack");
+		
+			run("JACoP ", "imga=[final_picture_GFP] imgb=[Syt1_stack] thra=350 thrb=300 mm");
+	
+			//Saves log into _log folder with name of image file
+			selectWindow("Log");
+			saveAs("Text", masterDir + "/_logs/" + path);
+			
+			close("*");
+			close("Log");
+			close("Exception");
+
+		}
+	}
+}
