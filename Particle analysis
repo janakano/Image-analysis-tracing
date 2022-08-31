@@ -1,0 +1,92 @@
+// GUI's title
+Dialog.createNonBlocking("Coloc macro for eYFP injections");
+ 
+// Chose directory
+Dialog.addDirectory("Select your directory ", "/");
+
+// Show GUI
+Dialog.show();
+
+// Execute the rest of the code when OK is pressed
+// Set vars for inputs
+masterDir = Dialog.getString();
+
+// Execute macro here
+close("*");
+// Show process if checked
+
+input = masterDir + "/_images/"; 
+list = getFileList(input);
+
+// Create the logs folder
+new_directory_overlay = masterDir+"/_logs";
+File.makeDirectory(new_directory_overlay);
+
+// Create masks folder
+new_directory_overlay = masterDir+"/_masks";
+File.makeDirectory(new_directory_overlay);
+
+setBatchMode("hide");
+
+for (i = 0; i < list.length; i++){  
+    path = list[i];
+    file = input + path;
+
+	if (endsWith(path, ".oif")) {
+    //open(file);
+	run("Bio-Formats", "open=["+file+"] color_mode=Grayscale rois_import=[ROI manager] split_channels view=Hyperstack stack_order=XYCZT");
+	
+	images = getList("image.titles");
+	
+	GFP = images[0];
+	Syt1 = images[1];
+	Map2 = images[2]; 
+
+	//remove Syt1 channel to only do Map2 and GFP coloc
+	selectWindow(Syt1); close();
+	selectWindow(Map2); close();
+	
+	selectWindow(GFP);
+	raw_stack_GFP = getTitle();
+	run("Set Scale...", "distance=0 known=0 unit=pixel");
+	run("Grays");
+	
+	//selectWindow(Syt1);
+	//raw_stack_Syt1 = getTitle();
+	//run("Set Scale...", "distance=0 known=0 unit=pixel");
+	//run("Grays");
+
+	//Create mask of GFP signal
+	selectWindow(GFP);
+	run("Z Project...", "projection=[Max Intensity]");
+	GFP_dupl = getTitle();
+	selectWindow(GFP_dupl);
+	setMinAndMax(400, 400);
+	run("Apply LUT");
+
+	setAutoThreshold("Default dark");
+	setOption("BlackBackground", false);
+	run("Convert to Mask");
+	
+	// select varicosities
+	run("Set Measurements...", "area display redirect=None decimal=9");
+	run("Analyze Particles...", "size=5-200 circularity=0.2-1.00 show=Overlay add");
+	roiManager("multi-measure measure_all");
+	saveAs("Results", masterDir + "/_logs/" + path + ".csv");
+	close("Results");
+	
+	roiManager("Combine");
+	roiManager("Add");
+	run("Create Mask");
+	
+	//save mask to check what was selected at the end of analysis
+	saveAs("Tiff", masterDir + "/_masks/" + path);
+
+	roiManager("Deselect");
+	roiManager("Delete");
+	
+	close("roiManager");
+	close("*");
+
+}
+}
